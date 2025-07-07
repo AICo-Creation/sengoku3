@@ -21,7 +21,14 @@
         body { background: var(--bg-primary); color: var(--text-primary); font: 12px Arial, sans-serif; overflow: hidden; }
         .container { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
         #title-image { display: block; margin: 0 auto; width: 100%; height: 100%; object-fit: contain; border-radius: 0; border: none; box-shadow: var(--shadow-glow); }
-        .header { height: 60px; background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; border-bottom: 2px solid var(--border-primary); }
+        .header { height: 60px; background: var(--gradient-primary); display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--border-primary); padding: 0 20px; }
+        .mobile-btn { background: var(--gradient-button); border: 1px solid var(--border-primary); color: var(--text-primary); padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 12px; transition: var(--transition-smooth); min-width: 100px; }
+        .mobile-btn:hover { background: var(--gradient-hover); border-color: var(--accent-red); }
+        
+        /* モバイルモード時の最適化 */
+        body.mobile-mode { overflow: hidden; }
+        body.mobile-mode .mobile-btn { background: var(--accent-green); border-color: var(--accent-green); }
+        body.mobile-mode .mobile-btn:hover { background: var(--accent-green); opacity: 0.8; }
         .title { font: bold 32px Arial; color: var(--accent-red); text-shadow: 2px 2px 4px #000; }
         .main-content { flex: 1; display: flex; flex-direction: column; }
         .control-panel { width: 320px; height: var(--bottom-height, 180px); background: var(--bg-tertiary); border-top: 2px solid var(--border-primary); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
@@ -310,6 +317,7 @@
         <div id="daimyo-selection-screen" class="main-content" style="overflow-y: auto;">
             <div class="header">
                 <div class="title">The Legend of General Star　群雄将星伝</div>
+                <button id="mobile-mode-btn" class="mobile-btn">📱 スマホ版</button>
                 <audio id="bgm" autoplay loop muted>
                     <source src="syoseiden.mp3" type="audio/mpeg">
                 </audio>
@@ -1529,6 +1537,9 @@
                 document.getElementById('recruit-btn').addEventListener('click', () => this.showRecruitModal());
                 document.getElementById('recruit-general-btn').addEventListener('click', () => this.showRecruitGeneralModal());
                 document.getElementById('generals-btn').addEventListener('click', () => this.showGeneralsModal());
+                
+                // モバイルボタン
+                document.getElementById('mobile-mode-btn').addEventListener('click', () => this.toggleMobileMode());
                 
                 // モーダル
                 document.getElementById('modal-cancel-btn').addEventListener('click', () => this.hideModal());
@@ -2752,6 +2763,23 @@
             hideModal() {
                 document.getElementById('action-modal').style.display = 'none';
                 this.currentAction = null;
+            }
+            
+            toggleMobileMode() {
+                if (screen.orientation && screen.orientation.lock) {
+                    // 画面を横向きに固定
+                    screen.orientation.lock('landscape').catch(err => {
+                        console.log('画面回転の固定ができませんでした:', err);
+                        // フォールバック: ユーザーに画面回転を促すメッセージを表示
+                        alert('スマホを横向きにしてください。\n最適なゲーム体験のために画面を回転させてください。');
+                    });
+                } else {
+                    // ユーザーに画面回転を促すメッセージを表示
+                    alert('スマホを横向きにしてください。\n最適なゲーム体験のために画面を回転させてください。');
+                }
+                
+                // モバイル向けCSSクラスを追加
+                document.body.classList.add('mobile-mode');
             }
             
             executeModalAction() {
