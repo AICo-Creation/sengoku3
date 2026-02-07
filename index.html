@@ -4616,6 +4616,7 @@
                         target.owner = this.gameState.playerDaimyo;
                         target.troops = Math.floor(attackPower / 5); // 新たな守備兵配置
                         target.walls = 100; // 奪取直後は100スタート
+                        target.generalGarrison = null; // 旧城主参照をクリア
                         
                         // 新領土に大名の得意兵科を設定
                         const playerDaimyo = this.gameState.getPlayerDaimyoData();
@@ -7361,7 +7362,8 @@
                                     target.owner = daimyo.id;
                                     target.troops = Math.floor(finalAiAttackPower / 5);
                                     target.walls = 100; // 奪取直後は100スタート
-                                    
+                                    target.generalGarrison = null; // 旧城主参照をクリア
+
                                     // AI大名の得意兵科を設定
                                     if (daimyo.preferredUnit) {
                                         target.unitType = daimyo.preferredUnit;
@@ -9181,16 +9183,8 @@
             }
             
             saveGeneralsSettings() {
-                // 忠誠度を操作する関数
-                const handleLoyaltyChange = (oldGeneralId, newGeneralId, reason) => {
-                    if (oldGeneralId && oldGeneralId !== newGeneralId) {
-                        const general = this.gameState.generals.find(g => g.id === oldGeneralId);
-                        if (general) {
-                            general.loyalty = Math.max(0, general.loyalty - 10);
-                            this.gameState.addLog(`${general.name}の忠誠度が-10 (${reason}により解任)`, 'battle');
-                        }
-                    }
-                };
+                // 役職・軍団の変更はドロップダウンのchangeイベントで即時保存済み
+                // ここでは城主配置のみ最終確認して保存する
 
                 // 城主配置の変更を検知
                 const territorySelects = document.querySelectorAll('#territory-assignment-list select');
@@ -9199,43 +9193,43 @@
                     const newGeneralId = select.value || null;
                     const territory = this.gameState.territories.find(t => t.id === territoryId);
                     if (territory) {
-                        const oldGeneralId = territory.generalGarrison;
-                        handleLoyaltyChange(oldGeneralId, newGeneralId, '城主交代');
                         territory.generalGarrison = newGeneralId;
                     }
-                });
-
-                // 役職設定の変更を検知
-                const roleSelects = document.querySelectorAll('#tab-roles select');
-                roleSelects.forEach(select => {
-                    const role = select.id.replace('-select', '');
-                    const newGeneralId = select.value || null;
-                    const oldGeneralId = this.gameState.playerRoles[role];
-                    handleLoyaltyChange(oldGeneralId, newGeneralId, '役職交代');
-                    this.gameState.playerRoles[role] = newGeneralId;
-                });
-
-                // 軍団編成の変更を検知
-                const armySelects = document.querySelectorAll('#tab-army select');
-                armySelects.forEach(select => {
-                    const role = select.id;
-                    const newGeneralId = select.value || null;
-                    const oldGeneralId = this.gameState.playerRoles[role];
-                    handleLoyaltyChange(oldGeneralId, newGeneralId, '軍団交代');
-                    this.gameState.playerRoles[role] = newGeneralId;
                 });
 
                 this.gameState.addLog('武将設定を保存しました', 'strategy');
                 this.hideGeneralsModal();
                 this.calculateArmyStats();
-                this.refreshAllTabs(); // 変更を全タブに反映
+                this.refreshAllTabs();
             }
             
             // 役職の重複をチェックして修正
             validateAndFixRoleAssignments() {
+                // 正規キー以外を削除（saveGeneralsSettingsの旧バグで不正キーが残る場合の対策）
+                const validKeys = ['strategist','diplomat','administrator',
+                    'kenchiCommissioner','riceCommissioner','townCommissioner',
+                    'goldCommissioner','constructionCommissioner','militaryCommissioner',
+                    'armyStrategist','vanguard','rightWing','leftWing','reserve'];
+                Object.keys(this.gameState.playerRoles).forEach(key => {
+                    if (!validKeys.includes(key)) {
+                        delete this.gameState.playerRoles[key];
+                    }
+                });
+
+                // 既に主君でなくなった武将の参照をクリア
+                const playerGeneralIds = new Set(
+                    this.gameState.generals.filter(g => g.lord === this.gameState.playerDaimyo).map(g => g.id)
+                );
+                validKeys.forEach(key => {
+                    const gid = this.gameState.playerRoles[key];
+                    if (gid && !playerGeneralIds.has(gid)) {
+                        this.gameState.playerRoles[key] = null;
+                    }
+                });
+
                 const usedGenerals = new Set();
                 const conflictingRoles = [];
-                
+
                 // 重複をチェック
                 Object.entries(this.gameState.playerRoles).forEach(([roleKey, generalId]) => {
                     if (generalId) {
@@ -9246,17 +9240,26 @@
                         }
                     }
                 });
-                
+
                 // 重複がある場合は最後に設定されたもの以外をクリア
                 conflictingRoles.forEach(roleKey => {
                     this.gameState.playerRoles[roleKey] = null;
                 });
-                
+
                 if (conflictingRoles.length > 0) {
                     this.gameState.addLog(`重複した役職設定を修正しました: ${conflictingRoles.length}件`);
                 }
+
+                // 城主配置の整合性チェック（主君でない武将の参照クリア）
+                this.gameState.territories.forEach(t => {
+                    if (t.owner === this.gameState.playerDaimyo && t.generalGarrison) {
+                        if (!playerGeneralIds.has(t.generalGarrison)) {
+                            t.generalGarrison = null;
+                        }
+                    }
+                });
             }
-            
+
             updateAvailableGeneralsList() {
                 const container = document.getElementById('available-generals-list');
                 if (!container) return;
